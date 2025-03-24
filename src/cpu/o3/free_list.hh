@@ -174,6 +174,11 @@ class UnifiedFreeList
     addReg(PhysRegIdPtr freed_reg)
     {
         freeLists[freed_reg->classValue()].addReg(freed_reg);
+        #ifdef UFC_EXP1
+        freed_reg->allocTick = -1;
+        freed_reg->wbTick = -1;
+        freed_reg->freeTick = -1;
+        #endif
     }
 
     /** Checks if there are any free registers of type type. */

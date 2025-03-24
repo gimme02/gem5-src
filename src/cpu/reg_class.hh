@@ -68,6 +68,9 @@ enum RegClassType
     MatRegClass,        ///< Matrix Register
     CCRegClass,         ///< Condition-code register
     MiscRegClass,       ///< Control (misc) register
+    #ifdef UFC_EXP1
+    NumRegClasses,
+    #endif
     InvalidRegClass = -1
 };
 
@@ -419,6 +422,28 @@ class PhysRegId : private RegId
     bool pinned;
 
   public:
+
+    #ifdef UFC_EXP1
+    Tick allocTick;
+    Tick wbTick;
+    Tick freeTick;
+    #endif
+
+
+    #ifdef UFC_EXP1
+        explicit PhysRegId() : RegId(invalidRegClass, -1), flatIdx(-1),
+                           numPinnedWritesToComplete(0),
+                           allocTick(-1), wbTick(-1), freeTick(-1)
+    {}
+
+    /** Scalar PhysRegId constructor. */
+    explicit PhysRegId(const RegClass &reg_class, RegIndex _regIdx,
+              RegIndex _flatIdx)
+        : RegId(reg_class, _regIdx), flatIdx(_flatIdx),
+          numPinnedWritesToComplete(0), pinned(false),
+          allocTick(-1), wbTick(-1), freeTick(-1)
+    {}
+    #else
     explicit PhysRegId() : RegId(invalidRegClass, -1), flatIdx(-1),
                            numPinnedWritesToComplete(0)
     {}
@@ -429,6 +454,7 @@ class PhysRegId : private RegId
         : RegId(reg_class, _regIdx), flatIdx(_flatIdx),
           numPinnedWritesToComplete(0), pinned(false)
     {}
+    #endif
 
     /** Visible RegId methods */
     /** @{ */

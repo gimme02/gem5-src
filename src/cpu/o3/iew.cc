@@ -1377,6 +1377,9 @@ IEW::writebackInsts()
                             inst->renamedDestIdx(i)->index(),
                             inst->renamedDestIdx(i)->className());
                     scoreboard->setReg(inst->renamedDestIdx(i));
+                    #ifdef UFC_EXP1
+                    inst->renamedDestIdx(i)->wbTick = curTick();
+                    #endif
                 }
             }
 

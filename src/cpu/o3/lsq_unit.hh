@@ -48,6 +48,11 @@
 #include <memory>
 #include <queue>
 
+#ifdef UFC_EXP2
+#include <limits>
+#define binNums 6
+#endif
+
 #include "arch/generic/debugfaults.hh"
 #include "arch/generic/vec_reg.hh"
 #include "base/circular_queue.hh"
@@ -67,6 +72,22 @@ namespace gem5
 {
 
 struct BaseO3CPUParams;
+
+#ifdef UFC_EXP2
+struct _AMTEntry{
+  bool isValid;
+  bool isReuse;
+  bool isPrevLoad;
+  bool isPrevCommit;
+  bool isLoad;
+  bool isCommit;
+  InstSeqNum seqNum;
+  Tick lastAccess;
+  unsigned size; // 새로 추가: 메모리 요청의 크기
+};
+
+typedef struct _AMTEntry AMTEntry;
+#endif
 
 namespace o3
 {
@@ -91,6 +112,16 @@ class LSQUnit
     static constexpr auto MaxDataBytes = MaxVecRegLenInBytes;
 
     using LSQRequest = LSQ::LSQRequest;
+    #ifdef UFC_EXP2
+    std::map<Addr, AMTEntry> retiredAMT;
+    std::map<Addr, AMTEntry> specAMT;
+    // @TODO: Is there any way to set bktBondary more efficiently?
+    uint64_t bktBoundary[6][2];
+    uint64_t binBoundary[5][2];
+    void doRecord(DynInstPtr inst, LSQRequest *request);
+    void commitRecord(DynInstPtr inst);
+    //void undoRecord(DynInstPtr inst);
+    #endif
   private:
     class LSQEntry
     {
@@ -512,6 +543,25 @@ class LSQUnit
     struct LSQUnitStats : public statistics::Group
     {
         LSQUnitStats(statistics::Group *parent);
+
+        #ifdef UFC_EXP2
+        statistics::Vector storeloadReuse;
+        statistics::Vector loadloadReuse;
+        statistics::Vector inflightStoreLoadReuse;
+        statistics::Vector inflightLoadLoadReuse;
+        statistics::Vector commitStoreLoadReuse;
+        statistics::Vector commitLoadLoadReuse;
+
+        statistics::Vector storeloadReuseROB;
+        statistics::Vector loadloadReuseROB;
+        statistics::Vector inflightStoreLoadReuseROB;
+        statistics::Vector inflightLoadLoadReuseROB;
+        statistics::Vector commitStoreLoadReuseROB;
+        statistics::Vector commitLoadLoadReuseROB;
+
+        statistics::Scalar reusedLoads;
+        statistics::Scalar totalLoads;
+        #endif
 
         /** Total number of loads forwaded from LSQ stores. */
         statistics::Scalar forwLoads;

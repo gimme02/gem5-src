@@ -58,6 +58,12 @@ namespace gem5
 namespace o3
 {
 
+#ifdef UFC_EXP1
+constexpr const char* regClassName[] = {"integer", "floating_point", "vector",
+                                            "vector_element", "vector_predicate",
+                                            "matrix", "condition_code", "miscellaneous"};
+#endif
+
 Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
     : cpu(_cpu),
       iewToRenameDelay(params.iewToRenameDelay),
@@ -96,6 +102,20 @@ Rename::name() const
 
 Rename::RenameStats::RenameStats(statistics::Group *parent)
     : statistics::Group(parent, "rename"),
+
+      #ifdef UFC_EXP1
+      ADD_STAT(alloc2free, statistics::units::Cycle::get(),
+               "Number of cycles from allocation to free"),
+      ADD_STAT(alloc2wb, statistics::units::Cycle::get(),
+               "Number of cycles from allocation to writeback"),
+      ADD_STAT(wb2free, statistics::units::Cycle::get(),
+               "Number of cycles from writeback to free"),
+      ADD_STAT(cnt, statistics::units::Count::get()),
+      ADD_STAT(totalCnt, statistics::units::Count::get(),
+               "Total number of physical registers"),
+      ADD_STAT(lifetimeROB, statistics::units::Count::get(),
+               "Lifetime of ROB entries"),
+      #endif
       ADD_STAT(squashCycles, statistics::units::Cycle::get(),
                "Number of cycles rename is squashing"),
       ADD_STAT(idleCycles, statistics::units::Cycle::get(),
@@ -147,6 +167,22 @@ Rename::RenameStats::RenameStats(statistics::Group *parent)
       ADD_STAT(skidInsts, statistics::units::Count::get(),
                "count of insts added to the skid buffer")
 {
+    #ifdef UFC_EXP1
+    alloc2free.init(NumRegClasses);
+    alloc2wb.init(NumRegClasses);
+    wb2free.init(NumRegClasses);
+    cnt.init(NumRegClasses);
+    lifetimeROB.init(NumRegClasses);
+
+    for (int i=0; i<NumRegClasses; i++){
+        alloc2free.subname(i, regClassName[i]);
+        alloc2wb.subname(i, regClassName[i]);
+        wb2free.subname(i, regClassName[i]);
+        cnt.subname(i, regClassName[i]);
+        lifetimeROB.subname(i, regClassName[i]);
+    }
+    #endif
+
     squashCycles.prereq(squashCycles);
     idleCycles.prereq(idleCycles);
     blockCycles.prereq(blockCycles);
@@ -999,9 +1035,27 @@ Rename::removeFromHistory(InstSeqNum inst_seq_num, ThreadID tid)
         // can be recognized because the new mapping is the same as
         // the old one.
         if (hb_it->newPhysReg != hb_it->prevPhysReg) {
+            #ifdef UFC_EXP1
+            hb_it->prevPhysReg->freeTick = curTick();
+            stats.lifetimeROB[hb_it->prevPhysReg->classValue()] += inst_seq_num - hb_it->instSeqNum;
+            if(hb_it->prevPhysReg->freeTick != -1 && hb_it->prevPhysReg->wbTick != -1 && hb_it->prevPhysReg->allocTick != -1)
+            {
+                Cycles alloc2free = cpu->ticksToCycles(hb_it->prevPhysReg->freeTick - hb_it->prevPhysReg->allocTick);
+                Cycles alloc2wb = cpu->ticksToCycles(hb_it->prevPhysReg->wbTick - hb_it->prevPhysReg->allocTick);
+                Cycles wb2free = cpu->ticksToCycles(hb_it->prevPhysReg->freeTick - hb_it->prevPhysReg->wbTick);
+                stats.alloc2free[hb_it->prevPhysReg->classValue()] += alloc2free;
+                stats.alloc2wb[hb_it->prevPhysReg->classValue()] += alloc2wb;
+                stats.wb2free[hb_it->prevPhysReg->classValue()] += wb2free;
+            }
+            #endif
             freeList->addReg(hb_it->prevPhysReg);
         }
 
+        #ifdef UFC_EXP1
+        if(hb_it->prevPhysReg->classValue() != InvalidRegClass)
+            stats.cnt[hb_it->prevPhysReg->classValue()]++;
+        ++stats.totalCnt;
+        #endif
         ++stats.committedMaps;
 
         historyBuffer[tid].erase(hb_it--);
@@ -1130,6 +1184,10 @@ Rename::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
         inst->renameDestReg(dest_idx,
                             rename_result.first,
                             rename_result.second);
+
+        #ifdef UFC_EXP1
+        rename_result.first->allocTick = curTick();
+        #endif
 
         ++stats.renamedOperands;
     }

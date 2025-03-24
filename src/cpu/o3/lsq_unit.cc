@@ -61,6 +61,138 @@ namespace gem5
 namespace o3
 {
 
+#ifdef UFC_EXP2
+
+/// @brief Construct the record for Load/Store Instructions.
+///        Since instruction is not committed yet, it first record on specAMT
+/// @param inst
+/// @param request
+void
+LSQUnit::doRecord(DynInstPtr inst, LSQRequest *request)
+{
+    if (!inst)
+        return;
+
+    if (!(request) || !(request->mainReq()) || !(request->mainReq()->getPaddr()))
+        return;
+
+    Addr addr = request->mainReq()->getPaddr();
+    unsigned reqSize = request->mainReq()->getSize();
+    Addr reqEnd = addr + reqSize;
+
+    bool isReuse = false;
+    bool isPrevLoad = false;
+    bool isPrevCommit = false;
+
+    // 기존 specAMT의 기록 중 request의 주소 범위에 해당하는 것이 있으면 reuse로 처리
+    for (const auto &pair : specAMT) {
+        Addr recAddr = pair.first;
+        unsigned recSize = pair.second.size;
+        Addr recEnd = recAddr + recSize;
+        if (addr >= recAddr && reqEnd <= recEnd) {
+            isReuse = true;
+            isPrevLoad = pair.second.isLoad;
+            isPrevCommit = pair.second.isCommit;
+            break;
+        }
+    }
+
+    bool isLoad = inst->isLoad();
+    bool isCommit = false;
+    InstSeqNum seqNum = inst->seqNum;
+    Tick lastAccess = curTick();
+
+    AMTEntry entry = { true, isReuse, isPrevLoad, isPrevCommit,
+                       isLoad, isCommit, seqNum, lastAccess, reqSize };
+    inst->record = entry;
+    specAMT[addr] = entry;
+}
+
+void
+LSQUnit::commitRecord(DynInstPtr inst)
+{
+
+    if(!inst || !(inst->record.isValid) || !(inst->savedRequest) || !(inst->savedRequest->mainReq()) || !(inst->savedRequest->mainReq()->getPaddr())) {
+        return;
+    }
+
+    if(inst->isLoad()){
+        stats.totalLoads++;
+    }
+
+    Addr addr = inst->savedRequest->mainReq()->getPaddr();
+
+    auto specRecord = specAMT.find(addr);
+    auto retiredRecord = retiredAMT.find(addr);
+
+    if((specRecord == specAMT.end())) {
+        return;
+    }
+
+    if(specRecord->second.seqNum == inst->seqNum) {
+        specAMT[addr].isCommit = true;
+    }
+
+    if(inst->isLoad() && !(retiredRecord == retiredAMT.end())) {
+        Cycles latency = cpu->ticksToCycles(inst->record.lastAccess - retiredRecord->second.lastAccess);
+        uint64_t ROBDistance = inst->seqNum - retiredRecord->second.seqNum;
+        uint64_t bin, bin1;
+
+        // Calculate the right Bin
+        for(bin = 0; bin < binNums; bin++) {
+            if(latency < bktBoundary[bin][1]) {
+                break;
+            }
+        }
+
+        for(bin1 = 0; bin1 < binNums; bin1++) {
+            if(ROBDistance < binBoundary[bin1][1]) {
+                break;
+            }
+        }
+
+        // Update the stats
+        bool isReuse = inst->record.isReuse;
+        bool isPrevLoad = inst->record.isPrevLoad;
+        bool isPrevCommit = inst->record.isPrevCommit;
+        if (isReuse){
+            stats.reusedLoads++;
+            if(isPrevLoad){
+                stats.loadloadReuse[bin]++;
+                stats.loadloadReuseROB[bin1]++;
+                if(isPrevCommit){
+                    stats.commitLoadLoadReuse[bin]++;
+                    stats.commitLoadLoadReuseROB[bin1]++;
+                } else {
+                    stats.inflightLoadLoadReuse[bin]++;
+                    stats.inflightLoadLoadReuseROB[bin1]++;
+                }
+            } else {
+                stats.storeloadReuse[bin]++;
+                stats.storeloadReuseROB[bin1]++;
+                if(isPrevCommit){
+                    stats.commitStoreLoadReuse[bin]++;
+                    stats.commitStoreLoadReuseROB[bin1]++;
+                } else {
+                    stats.inflightStoreLoadReuse[bin]++;
+                    stats.inflightStoreLoadReuseROB[bin1]++;
+                }
+            }
+        }
+    }
+
+    // Update RetiredAMT
+    retiredAMT[addr] = specRecord->second;
+}
+
+// void
+// LSQUnit::undoRecord(DynInstPtr inst)
+// {
+//     return;
+// }
+#endif
+
+
 LSQUnit::WritebackEvent::WritebackEvent(const DynInstPtr &_inst,
         PacketPtr _pkt, LSQUnit *lsq_ptr)
     : Event(Default_Pri, AutoDelete),
@@ -197,6 +329,31 @@ LSQUnit::LSQUnit(uint32_t lqEntries, uint32_t sqEntries)
       cacheBlockMask(0), stalled(false),
       isStoreBlocked(false), storeInFlight(false), stats(nullptr)
 {
+    #ifdef UFC_EXP2
+    bktBoundary[0][0] = 0;
+    bktBoundary[0][1] = 10;
+    bktBoundary[1][0] = 11;
+    bktBoundary[1][1] = 30;
+    bktBoundary[2][0] = 31;
+    bktBoundary[2][1] = 50;
+    bktBoundary[3][0] = 51;
+    bktBoundary[3][1] = 100;
+    bktBoundary[4][0] = 101;
+    bktBoundary[4][1] = 250;
+    bktBoundary[5][0] = 251;
+    bktBoundary[5][1] = std::numeric_limits<uint64_t>::max();
+
+    binBoundary[0][0] = 0;
+    binBoundary[0][1] = 195;
+    binBoundary[1][0] = 196;
+    binBoundary[1][1] = 277;
+    binBoundary[2][0] = 278;
+    binBoundary[2][1] = 391;
+    binBoundary[3][0] = 392;
+    binBoundary[3][1] = 767;
+    binBoundary[4][0] = 768;
+    binBoundary[4][1] = std::numeric_limits<uint64_t>::max();
+    #endif
 }
 
 void
@@ -253,6 +410,37 @@ LSQUnit::name() const
 
 LSQUnit::LSQUnitStats::LSQUnitStats(statistics::Group *parent)
     : statistics::Group(parent),
+
+      #ifdef UFC_EXP2
+      ADD_STAT(storeloadReuse, statistics::units::Count::get(),
+               "Distributions of store-load reuse with respect to reuse distance"),
+      ADD_STAT(loadloadReuse, statistics::units::Count::get(),
+               "Distributions of load-load reuse with respect to reuse distance"),
+      ADD_STAT(inflightStoreLoadReuse, statistics::units::Count::get(),
+               "Distributions of store-load reuse with respect to reuse distance"),
+      ADD_STAT(inflightLoadLoadReuse, statistics::units::Count::get(),
+               "Distributions of load-load reuse with respect to reuse distance"),
+      ADD_STAT(commitStoreLoadReuse, statistics::units::Count::get(),
+               "Distributions of store-load reuse with respect to reuse distance"),
+      ADD_STAT(commitLoadLoadReuse, statistics::units::Count::get(),
+               "Distributions of load-load reuse with respect to reuse distance"),
+      ADD_STAT(storeloadReuseROB, statistics::units::Count::get(),
+               "Distributions of store-load reuse with respect to reuse distance"),
+      ADD_STAT(loadloadReuseROB, statistics::units::Count::get(),
+               "Distributions of load-load reuse with respect to reuse distance"),
+      ADD_STAT(inflightStoreLoadReuseROB, statistics::units::Count::get(),
+               "Distributions of store-load reuse with respect to reuse distance"),
+      ADD_STAT(inflightLoadLoadReuseROB, statistics::units::Count::get(),
+               "Distributions of load-load reuse with respect to reuse distance"),
+      ADD_STAT(commitStoreLoadReuseROB, statistics::units::Count::get(),
+               "Distributions of store-load reuse with respect to reuse distance"),
+      ADD_STAT(commitLoadLoadReuseROB, statistics::units::Count::get(),
+               "Distributions of load-load reuse with respect to reuse distance"),
+      ADD_STAT(reusedLoads, statistics::units::Count::get(),
+               "Total number of forwarded loads"),
+      ADD_STAT(totalLoads, statistics::units::Count::get(),
+               "Total number of loads"),
+      #endif
       ADD_STAT(forwLoads, statistics::units::Count::get(),
                "Number of loads that had data forwarded from stores"),
       ADD_STAT(squashedLoads, statistics::units::Count::get(),
@@ -275,6 +463,38 @@ LSQUnit::LSQUnitStats::LSQUnitStats(statistics::Group *parent)
     loadToUse
         .init(0, 299, 10)
         .flags(statistics::nozero);
+    #ifdef UFC_EXP2
+    storeloadReuse
+        .init(binNums);
+    loadloadReuse
+        .init(binNums);
+    inflightStoreLoadReuse
+        .init(binNums);
+    inflightLoadLoadReuse
+        .init(binNums);
+    commitStoreLoadReuse
+        .init(binNums);
+    commitLoadLoadReuse
+        .init(binNums);
+    storeloadReuseROB
+        .init(binNums);
+    loadloadReuseROB
+        .init(binNums);
+    inflightStoreLoadReuseROB
+        .init(binNums);
+    inflightLoadLoadReuseROB
+        .init(binNums);
+    commitStoreLoadReuseROB
+        .init(binNums);
+    commitLoadLoadReuseROB
+        .init(binNums);
+
+
+    // for (int i = 0; i < binNums; i++) {
+    //     storeloadReuse.subname(i, csprintf("storeloadReuse[%d,%d)", bktBoundary[i][0], bktBoundary[i][1]));
+    //     loadloadReuse.subname(i, csprintf("loadloadReuse[%d, %d)", bktBoundary[i][0], bktBoundary[i][1]));
+    // }
+    #endif
 }
 
 void
@@ -732,6 +952,12 @@ LSQUnit::commitLoad()
             && inst->lastWakeDependents != -1) {
         stats.loadToUse.sample(cpu->ticksToCycles(
                     inst->lastWakeDependents - inst->firstIssue));
+
+        // @TODO: is req still valid? What is req get deleted after the request?
+        // Mark that the load is committed
+        #ifdef UFC_EXP2
+        commitRecord(inst);
+        #endif
     }
 
     loadQueue.front().clear();
@@ -858,6 +1084,11 @@ LSQUnit::writebackStores()
                 storeWBIt.idx(), inst->pcState(),
                 request->mainReq()->getPaddr(), (int)*(inst->memData),
                 inst->seqNum);
+
+        #ifdef UFC_EXP2
+        // Update the AMT entry for this address
+        commitRecord(inst);
+        #endif
 
         // @todo: Remove this SC hack once the memory system handles it.
         if (inst->isStoreConditional()) {
@@ -1324,6 +1555,10 @@ LSQUnit::read(LSQRequest *request, ssize_t load_idx)
 
     assert(!load_inst->isExecuted());
 
+    #ifdef UFC_EXP2
+    doRecord(load_inst, request);
+    #endif
+
     // Make sure this isn't a strictly ordered load
     // A bit of a hackish way to get strictly ordered accesses to work
     // only if they're at the head of the LSQ and are ready to commit
@@ -1345,6 +1580,9 @@ LSQUnit::read(LSQRequest *request, ssize_t load_idx)
         // place to really handle request deletes.
         load_entry.setRequest(nullptr);
         request->discard();
+        // #ifdef UFC_EXP2
+        // undoRecord(load_inst);
+        // #endif
         return std::make_shared<GenericISA::M5PanicFault>(
             "Strictly ordered load [sn:%llx] PC %s\n",
             load_inst->seqNum, load_inst->pcState());
@@ -1553,6 +1791,10 @@ LSQUnit::read(LSQRequest *request, ssize_t load_idx)
                 load_inst->effAddrValid(false);
                 ++stats.rescheduledLoads;
 
+                // #ifdef UFC_EXP2
+                // undoRecord(load_inst);
+                // #endif
+
                 // Do not generate a writeback event as this instruction is not
                 // complete.
                 DPRINTF(LSQUnit, "Load-store forwarding mis-match. "
@@ -1623,6 +1865,12 @@ LSQUnit::write(LSQRequest *request, uint8_t *data, ssize_t store_idx)
         !request->req()->isCacheMaintenance() &&
         !request->req()->isAtomic())
         memcpy(storeQueue[store_idx].data(), data, size);
+
+    #ifdef UFC_EXP2
+    SQEntry& store_entry = storeQueue[store_idx];
+    const DynInstPtr& store_inst = store_entry.instruction();
+    doRecord(store_inst, request);
+    #endif
 
     // This function only writes the data to the store queue, so no fault
     // can happen here.

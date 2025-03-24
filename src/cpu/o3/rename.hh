@@ -483,6 +483,16 @@ class Rename
     {
         RenameStats(statistics::Group *parent);
 
+        #ifdef UFC_EXP1
+        /** Stats for status of each physical register **/
+        statistics::Vector alloc2free;
+        statistics::Vector alloc2wb;
+        statistics::Vector wb2free;
+        statistics::Vector cnt;
+        statistics::Scalar totalCnt;
+        statistics::Vector lifetimeROB;
+        #endif
+
         /** Stat for total number of cycles spent squashing. */
         statistics::Scalar squashCycles;
         /** Stat for total number of cycles spent idle. */

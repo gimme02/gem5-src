@@ -82,6 +82,10 @@ class DynInst : public ExecContext, public RefCounted
     // The list of instructions iterator type.
     typedef typename std::list<DynInstPtr>::iterator ListIt;
 
+    #ifdef UFC_EXP2
+    AMTEntry record;
+    #endif
+
     struct Arrays
     {
         size_t numSrcs;
