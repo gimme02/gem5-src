@@ -50,6 +50,7 @@
 
 #ifdef UFC_EXP2
 #include <limits>
+
 #define binNums 6
 #endif
 
@@ -74,7 +75,8 @@ namespace gem5
 struct BaseO3CPUParams;
 
 #ifdef UFC_EXP2
-struct _AMTEntry{
+struct _AMTEntry
+{
   bool isValid;
   bool isReuse;
   bool isPrevLoad;

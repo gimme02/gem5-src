@@ -103,6 +103,8 @@ if getattr(SCons, '__version__', None) in ('3.0.0', '3.0.1'):
 
 linker_options = ('bfd', 'gold', 'lld', 'mold')
 
+AddOption('--ufc-args', dest='ufc_args', action='append', default=[],
+          help="Arguments for UFC (Unified register File as a Cache)")
 AddOption('--no-colors', dest='use_colors', action='store_false',
           help="Don't add color to abbreviated scons output")
 AddOption('--with-cxx-config', action='store_true',
@@ -551,6 +553,12 @@ for variant_path in variant_paths:
         # As gcc and clang share many flags, do the common parts here
         env.Append(CCFLAGS=['-pipe'])
         env.Append(CCFLAGS=['-fno-strict-aliasing'])
+
+        #UFC
+        UFC_ARGS = GetOption('ufc_args')
+        if UFC_ARGS:
+            env.Append(CCFLAGS=UFC_ARGS)
+
 
         # Enable -Wall and -Wextra and then disable the few warnings that
         # we consistently violate

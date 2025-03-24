@@ -112,11 +112,11 @@ void
 LSQUnit::commitRecord(DynInstPtr inst)
 {
 
-    if(!inst || !(inst->record.isValid) || !(inst->savedRequest) || !(inst->savedRequest->mainReq()) || !(inst->savedRequest->mainReq()->getPaddr())) {
+    if (!inst || !(inst->record.isValid) || !(inst->savedRequest) || !(inst->savedRequest->mainReq()) || !(inst->savedRequest->mainReq()->getPaddr())) {
         return;
     }
 
-    if(inst->isLoad()){
+    if (inst->isLoad()){
         stats.totalLoads++;
     }
 
@@ -125,28 +125,28 @@ LSQUnit::commitRecord(DynInstPtr inst)
     auto specRecord = specAMT.find(addr);
     auto retiredRecord = retiredAMT.find(addr);
 
-    if((specRecord == specAMT.end())) {
+    if ((specRecord == specAMT.end())) {
         return;
     }
 
-    if(specRecord->second.seqNum == inst->seqNum) {
+    if (specRecord->second.seqNum == inst->seqNum) {
         specAMT[addr].isCommit = true;
     }
 
-    if(inst->isLoad() && !(retiredRecord == retiredAMT.end())) {
+    if (inst->isLoad() && !(retiredRecord == retiredAMT.end())) {
         Cycles latency = cpu->ticksToCycles(inst->record.lastAccess - retiredRecord->second.lastAccess);
         uint64_t ROBDistance = inst->seqNum - retiredRecord->second.seqNum;
         uint64_t bin, bin1;
 
         // Calculate the right Bin
-        for(bin = 0; bin < binNums; bin++) {
-            if(latency < bktBoundary[bin][1]) {
+        for (bin = 0; bin < binNums; bin++) {
+            if (latency < bktBoundary[bin][1]) {
                 break;
             }
         }
 
-        for(bin1 = 0; bin1 < binNums; bin1++) {
-            if(ROBDistance < binBoundary[bin1][1]) {
+        for (bin1 = 0; bin1 < binNums; bin1++) {
+            if (ROBDistance < binBoundary[bin1][1]) {
                 break;
             }
         }
@@ -157,10 +157,10 @@ LSQUnit::commitRecord(DynInstPtr inst)
         bool isPrevCommit = inst->record.isPrevCommit;
         if (isReuse){
             stats.reusedLoads++;
-            if(isPrevLoad){
+            if (isPrevLoad){
                 stats.loadloadReuse[bin]++;
                 stats.loadloadReuseROB[bin1]++;
-                if(isPrevCommit){
+                if (isPrevCommit){
                     stats.commitLoadLoadReuse[bin]++;
                     stats.commitLoadLoadReuseROB[bin1]++;
                 } else {
@@ -170,7 +170,7 @@ LSQUnit::commitRecord(DynInstPtr inst)
             } else {
                 stats.storeloadReuse[bin]++;
                 stats.storeloadReuseROB[bin1]++;
-                if(isPrevCommit){
+                if (isPrevCommit){
                     stats.commitStoreLoadReuse[bin]++;
                     stats.commitStoreLoadReuseROB[bin1]++;
                 } else {

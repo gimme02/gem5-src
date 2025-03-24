@@ -1038,7 +1038,7 @@ Rename::removeFromHistory(InstSeqNum inst_seq_num, ThreadID tid)
             #ifdef UFC_EXP1
             hb_it->prevPhysReg->freeTick = curTick();
             stats.lifetimeROB[hb_it->prevPhysReg->classValue()] += inst_seq_num - hb_it->instSeqNum;
-            if(hb_it->prevPhysReg->freeTick != -1 && hb_it->prevPhysReg->wbTick != -1 && hb_it->prevPhysReg->allocTick != -1)
+            if (hb_it->prevPhysReg->freeTick != -1 && hb_it->prevPhysReg->wbTick != -1 && hb_it->prevPhysReg->allocTick != -1)
             {
                 Cycles alloc2free = cpu->ticksToCycles(hb_it->prevPhysReg->freeTick - hb_it->prevPhysReg->allocTick);
                 Cycles alloc2wb = cpu->ticksToCycles(hb_it->prevPhysReg->wbTick - hb_it->prevPhysReg->allocTick);
@@ -1052,7 +1052,7 @@ Rename::removeFromHistory(InstSeqNum inst_seq_num, ThreadID tid)
         }
 
         #ifdef UFC_EXP1
-        if(hb_it->prevPhysReg->classValue() != InvalidRegClass)
+        if (hb_it->prevPhysReg->classValue() != InvalidRegClass)
             stats.cnt[hb_it->prevPhysReg->classValue()]++;
         ++stats.totalCnt;
         #endif
